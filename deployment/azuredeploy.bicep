@@ -10,6 +10,7 @@ param repoName string
 param repoBranchName string
 param unique string = substring(uniqueString(resourceGroup().id), 0, 2)
 
+#disable-next-line no-loc-expr-outside-params
 var location = resourceGroup().location
 var iotHubName = 'iothub-${unique}'
 var adtName = 'adt-${unique}'
@@ -43,8 +44,11 @@ var tsiEventSourceName = ehTsiName
 
 // Update later when repo becomes public
 var funcPackageUri = 'https://github.com/${repoOrgName}/${repoName}/raw/${repoBranchName}/function-code/UnrealIoTIngest/funcapp-deploy.zip'
+//var funcPackageUri = 'https://github.com/srikanth-math/adt/tree/main/function-code/UnrealIoTIngest/funcapp-deploy.zip'
 var webAppPackageUri = 'https://github.com/${repoOrgName}/${repoName}/raw/${repoBranchName}/webapp-code/TsiWebApp/webapp-deploy.zip'
+//var webAppPackageUri = 'https://github.com/srikanth-math/adt/tree/main/webapp-code/TsiWebApp/webapp-deploy.zip'
 var azDtCreateScriptUri = 'https://github.com/${repoOrgName}/${repoName}/raw/${repoBranchName}/deployment/scripts/az-dt-route-create.sh'
+//var azDtCreateScriptUri = 'https://github.com/srikanth-math/adt/tree/main/deployment/scripts/az-dt-route-create.sh'
 
 var identityName = 'scriptidentity-${unique}'
 var rgRoleDefinitionId = resourceId('Microsoft.Authorization/roleDefinitions', '8e3af657-a8ff-443c-a75c-2fe8c4bcb635')
@@ -89,14 +93,12 @@ resource eventHubNamespace 'Microsoft.EventHub/namespaces@2021-01-01-preview' = 
     kafkaEnabled: true
     zoneRedundant: false
   }
-  dependsOn: [
-    identity
-  ]
 }
 
 // event hub namespace root authorization rule
 resource eventHubRootRule 'Microsoft.EventHub/namespaces/authorizationRules@2021-01-01-preview' = {
-  name: '${eventHubNamespace.name}/${ehNamespaceAuthRule}'
+  parent: eventHubNamespace
+  name: ehNamespaceAuthRule
   properties: {
     rights: [
       'Send'
@@ -108,7 +110,8 @@ resource eventHubRootRule 'Microsoft.EventHub/namespaces/authorizationRules@2021
 
 // event hub (used by ADT)
 resource twinsEventHub 'Microsoft.EventHub/namespaces/eventhubs@2021-01-01-preview' = {
-  name: '${eventHubNamespace.name}/${ehTwinsName}'
+  parent: eventHubNamespace
+  name: ehTwinsName
   properties: {
     messageRetentionInDays: 7
     partitionCount: 4
@@ -132,7 +135,8 @@ resource twinsEventHub 'Microsoft.EventHub/namespaces/eventhubs@2021-01-01-previ
 
 // event hub (used by TSI)
 resource tsiEventHub 'Microsoft.EventHub/namespaces/eventhubs@2021-01-01-preview' = {
-  name: '${eventHubNamespace.name}/${ehTsiName}'
+  parent: eventHubNamespace
+  name: ehTsiName
   properties: {
     messageRetentionInDays: 7
     partitionCount: 4
@@ -353,7 +357,6 @@ resource funcApp 'Microsoft.Web/sites@2021-01-15' = {
     clientAffinityEnabled: false
   }
   dependsOn: [
-    adt
     storage
     signalr
     identity
@@ -364,13 +367,11 @@ resource funcApp 'Microsoft.Web/sites@2021-01-15' = {
 
 // deploy the code for the two azure functionss (iot hub ingest and signalr)
 resource funcAppDeploy 'Microsoft.Web/sites/extensions@2020-12-01' = {
-  name: '${funcApp.name}/MSDeploy'
+#disable-next-line use-parent-property
+  name: '${funcApp.name}/ZipDeploy'
   properties: {
     packageUri: funcPackageUri
   }
-  dependsOn: [
-    funcApp
-  ]
 }
 
 // event grid topic that iot hub posts telemetry messages to
@@ -383,14 +384,14 @@ resource eventGridIngestTopic 'Microsoft.EventGrid/systemTopics@2020-04-01-previ
     topicType: 'microsoft.devices.iothubs'
   }
   dependsOn: [
-    iot
     funcAppDeploy
   ]
 }
 
 // event grid subscription for iot hub telemetry data (posts to iot hub ingestion function)
 resource eventGridIoTHubIngest 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2020-04-01-preview' = {
-  name: '${eventGridIngestTopic.name}/${ingestFuncName}'
+  parent: eventGridIngestTopic
+  name: ingestFuncName
   properties: {
     destination: {
       endpointType: 'AzureFunction'
@@ -410,7 +411,6 @@ resource eventGridIoTHubIngest 'Microsoft.EventGrid/systemTopics/eventSubscripti
   dependsOn: [
     iot
     funcAppDeploy
-    eventGridIngestTopic
   ]
 }
 
@@ -458,7 +458,6 @@ resource eventGridSignalr 'Microsoft.EventGrid/eventSubscriptions@2020-06-01' = 
   }
   dependsOn: [
     funcAppDeploy
-    eventGridADTChangeLogTopic
   ]
 }
 
@@ -579,14 +578,15 @@ resource tsiEnvironment 'Microsoft.TimeSeriesInsights/environments@2020-05-15' =
 
 // TSI event hub event source
 resource tsiEventSource 'Microsoft.TimeSeriesInsights/environments/eventSources@2020-05-15' = {
-  name: '${tsiEnvironment.name}/${tsiEventSourceName}'
+  parent: tsiEnvironment
+  name: tsiEventSourceName
   location: location
   tags: tags
   kind: 'Microsoft.EventHub'
   properties: {
-    eventSourceResourceId: '${tsiEventHub.id}'
+    eventSourceResourceId: tsiEventHub.id
     eventHubName: ehTsiName
-    serviceBusNamespace: '${eventHubNamespace.name}'
+    serviceBusNamespace: eventHubNamespace.name
     consumerGroupName: '$Default'
     keyName: ehTsiAuthRule
     sharedAccessKey: listKeys(ehTsiAuthRule, '2021-01-01-preview').primaryKey
@@ -656,20 +656,16 @@ resource webApp 'Microsoft.Web/sites@2021-01-15' = {
   dependsOn: [
     storage
     identity
-    appserver
-    tsiEnvironment
   ]
 }
 
 // deploy the code for the web app
 resource webAppDeploy 'Microsoft.Web/sites/extensions@2020-12-01' = {
-  name: '${webApp.name}/MSDeploy'
+#disable-next-line use-parent-property
+  name: '${webApp.name}/ZipDeploy'
   properties: {
     packageUri: webAppPackageUri
   }
-  dependsOn: [
-    webApp
-  ]
 }
   
 // post deployment script: ADT event hub route
@@ -696,7 +692,6 @@ resource adtEventHubRoute 'Microsoft.Resources/deploymentScripts@2020-10-01' = {
   }
   dependsOn: [
     iot
-    adt
     rgroledef
     eventGridADTChangeLogTopic
   ]
@@ -726,7 +721,6 @@ resource azDtEventGridRoute 'Microsoft.Resources/deploymentScripts@2020-10-01' =
   }
   dependsOn: [
     iot
-    adt
     rgroledef
     eventGridADTChangeLogTopic
   ]
@@ -734,6 +728,7 @@ resource azDtEventGridRoute 'Microsoft.Resources/deploymentScripts@2020-10-01' =
 
 output importantInfo object = {
   appId: appRegId
+  #disable-next-line outputs-should-not-contain-secrets
   password: appRegPassword
   tenant: tenantId
   iotHubName: iotHubName
