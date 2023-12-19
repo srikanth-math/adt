@@ -9,8 +9,8 @@ This document walks you through steps to deploy the backend Azure resources for 
 You will need to clone this repository in your Cloud Shell to run the required deployment scripts:
 
 ```powershell
-git clone https://github.com/Azure-Samples/azure-digital-twins-unreal-integration
-cd azure-digital-twins-unreal-integration
+git clone https://github.com/srikanth-math/adt
+cd adt
 ```
 
 ## Run deployment Wizard
