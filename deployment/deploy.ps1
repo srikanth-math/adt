@@ -443,8 +443,8 @@ function New-Deployment() {
         "appRegPassword"           = @{ "value" = $script:appRegSecret.password }
         "servicePrincipalObjectId" = @{ "value" = $script:service_ppal.id }
         "tenantId"                 = @{ "value" = $script:appRegSecret.tenant }
-        "repoOrgName"              = @{ "value" = "Azure-Samples" }
-        "repoName"                 = @{ "value" = "azure-digital-twins-unreal-integration" }
+        "repoOrgName"              = @{ "value" = "srikanth-math" }
+        "repoName"                 = @{ "value" = "adt" }
         "repoBranchName"           = @{ "value" = $(git rev-parse --abbrev-ref HEAD) }
     }
     Set-Content -Path $parameters -Value (ConvertTo-Json $template_parameters -Depth 5)
